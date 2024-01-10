@@ -32,7 +32,7 @@ enum SessionStatus {
 export(String) var client_id: String = "smtp.pandemoniumengine.org"
 
 export(String) var host: String = ""
-export(int) var port: int = 587
+export(int) var port: int = 465
 
 # TLS_METHOD_NONE: 
 # No encryption.
@@ -46,9 +46,9 @@ export(int) var port: int = 587
 # Connect, and immediately just set up SSL
 
 enum TLSMethod {
-	TLS_METHOD_NONE = 0, # Usual port 465
-	TLS_METHOD_STARTTLS, # Usual port 465
-	TLS_METHOD_SMTPS, # Usual port 587
+	TLS_METHOD_NONE = 0, # Usual port 587
+	TLS_METHOD_STARTTLS, # Usual port 587
+	TLS_METHOD_SMTPS, # Usual port 465
 }
 
 export(int, "NONE,STARTTLS,SMTPS") var tls_method : int = TLSMethod.TLS_METHOD_SMTPS
@@ -64,7 +64,7 @@ enum ServerAuthMethod {
 export(String) var server_auth_username: String
 export(String) var server_auth_password: String
 #Method
-export(int, "Plain,Login") var server_auth_method: int = ServerAuthMethod.SERVER_AUTH_LOGIN
+export(int, "Plain,Login") var server_auth_method : int = ServerAuthMethod.SERVER_AUTH_LOGIN
 
 # Networking
 var tls_client: StreamPeerSSL = StreamPeerSSL.new()
@@ -107,7 +107,6 @@ func send_email(email: Email) -> void:
 		tls_established = true
 	
 	session_status = SessionStatus.HELO
-
 	set_process(true)
 
 func poll_client() -> int: #Error
@@ -115,20 +114,39 @@ func poll_client() -> int: #Error
 		tls_client.poll()
 		return 0
 	else:
-		return tcp_client.poll()
+		#return tcp_client.poll()
+		return OK
+
+func client_get_status() -> bool:
+	if tls_started:
+		return tls_client.get_status() == StreamPeerSSL.STATUS_CONNECTED
+	
+	return tcp_client.get_status() == StreamPeerTCP.STATUS_CONNECTED
+
+func client_get_available_bytes() -> int:
+	if tls_started:
+		return tls_client.get_available_bytes()
+	
+	return tcp_client.get_available_bytes()
+
+func client_get_string(bytes : int) -> String:
+	if tls_started:
+		return tls_client.get_string(bytes)
+	
+	return tcp_client.get_string(bytes)
 
 func _process(delta: float) -> void:
 	if session_status == SessionStatus.SERVER_ERROR:
 		close_connection()
 	
 	if poll_client() == OK:
-		var connected: bool = (tcp_client.get_status() == StreamPeerTCP.STATUS_CONNECTED if not tls_started else tls_client.get_status() == StreamPeerSSL.STATUS_CONNECTED)
+		var connected: bool = client_get_status()
 		
 		if connected:
-			var bytes: int = (tcp_client if not tls_established else tls_client).get_available_bytes()
+			var bytes: int = client_get_available_bytes()
 			
 			if bytes > 0:
-				var msg: String = (tcp_client if not tls_established else tls_client).get_string(bytes)
+				var msg: String = client_get_string(bytes)
 				print("RECEIVED: " + msg)
 				var code: String = msg.left(3)
 				match code:
@@ -149,10 +167,12 @@ func _process(delta: float) -> void:
 									return
 									
 								tls_started = true
-								
+								tls_established = true
+							
 								# We need to do HELO + EHLO again
-								#session_status = SessionStatus.HELO
+								session_status = SessionStatus.HELO
 								start_hello()
+
 					"250":
 						match session_status:
 							SessionStatus.HELO_ACK:
@@ -234,7 +254,7 @@ func _process(delta: float) -> void:
 								session_status = SessionStatus.DATA_ACK
 					_:
 						printerr(msg)
-						
+
 		
 		if email != null and (session_status == SessionStatus.AUTHENTICATED):
 			session_status = SessionStatus.MAIL_FROM
