@@ -78,6 +78,7 @@ export(String) var email_default_sender_name : String
 
 var email: Email = null
 var to_index: int = 0
+var cc_index: int = 0
 
 func send_email(email: Email) -> void:
 	self.email = email
@@ -197,18 +198,24 @@ func _process(delta: float) -> void:
 										return
 							
 							SessionStatus.MAIL_FROM:
-								#TODO
-								#Response:
-								#250 2.1.5 Ok
-								#500 5.5.2 Error: bad syntax
-								if not write_command("RCPT TO: <%s>" % email.to[to_index].address + "\n"):
-									return
+								if (to_index < email.to.size()):
+									if not write_command("RCPT TO: <%s>" % email.to[to_index].address):
+										return
+									to_index += 1
+										
+								if (cc_index < email.cc.size()):
+									if not write_command("RCPT TO: <%s>" % email.cc[cc_index].address):
+										return
+									cc_index += 1
 									
 								session_status = SessionStatus.RCPT_TO
-								to_index += 1
-							
+
 							SessionStatus.RCPT_TO:
 								if (to_index < email.to.size()):
+									session_status = SessionStatus.MAIL_FROM
+									return
+									
+								if (cc_index < email.cc.size()):
 									session_status = SessionStatus.MAIL_FROM
 									return
 								

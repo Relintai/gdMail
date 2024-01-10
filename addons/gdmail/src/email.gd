@@ -6,16 +6,10 @@ class Address:
 	var personal: String
 	
 	func get_address_data_string() -> String:
-		var ads : String
+		if personal.size() == 0:
+			return address
 
-		if personal.size() > 0:
-			ads = personal + " "
-		else:
-			ads = address.split("@")[0] + " "
-			
-		ads += "<" + address + ">"
-		
-		return ads
+		return personal + " <" + address + ">"
 		
 	func get_address_data_list_string() -> String:
 		var ads : String
@@ -34,6 +28,7 @@ var sender_personal: String = ""
 
 #Array[Address] 
 var to: Array = []
+var cc: Array = []
 var subject: String = ""
 var body: String = ""
 
@@ -55,6 +50,13 @@ func add_recipient(p_address: String, p_personal: String = "") -> void:
 	
 	to.append(a)
 
+func add_cc(p_address: String, p_personal: String = "") -> void:
+	var a : Address = Address.new()
+	a.address = p_address
+	a.personal = p_personal
+	
+	cc.append(a)
+
 func set_recipients(p_to: Array) -> void:
 	to = p_to
 
@@ -73,7 +75,22 @@ func get_to_data_string() -> String:
 			continue
 			
 		if ret.size() != 0:
-			ret += ","
+			ret += ", "
+			
+		ret += t.get_address_data_string()
+			
+	return ret
+
+func get_cc_data_string() -> String:
+	var ret : String
+	
+	for t in cc:
+		if !t:
+			printerr("get_cc_data_string(): !t")
+			continue
+			
+		if ret.size() != 0:
+			ret += ", "
 			
 		ret += t.get_address_data_string()
 			
@@ -98,7 +115,20 @@ func get_email_data_string(email_default_sender_name : String, email_default_sen
 		
 		from_address += "<" + email_default_sender_email + ">"
 
-	return ("From: %s\nTo: <%s>\nSubject: %s\n\n%s\n" % [ from_address, get_to_data_string(), subject, body])
+	var data : String = "From: " + from_address + "\n"
+		
+	var to_data_string : String = get_to_data_string()
+	if !to_data_string.empty():
+		data += "To: " + to_data_string + "\n"
+	
+	var cc_data_string : String = get_cc_data_string()
+	if !cc_data_string.empty():
+		data += "Cc: " + cc_data_string + "\n"
+	
+	data += "Subject: " + subject + "\n\n"
+	data += body + "\n"
+	
+	return data
 
 func _to_string() -> String:
 	return ("From: %s <%s>\nTo: %s\nSubject: %s\n\n%s\n" % [sender_personal if not sender_personal.empty() else sender_address.split("@")[0], sender_address, ",".join(to), subject, body])
