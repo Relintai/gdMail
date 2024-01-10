@@ -34,10 +34,21 @@ export(String) var client_id: String = "smtp.pandemoniumengine.org"
 export(String) var host: String = ""
 export(int) var port: int = 465
 
+# TLS_METHOD_NONE: 
+# No encryption.
+# Username / Password will be sent without encryption.
+# Not recommended if you don't know what you are doing.
+
+# TLS_METHOD_STARTTLS
+# Connect, then use the STARTTLS command, and upgarde to using SSL
+
+# TLS_METHOD_SMTPS
+# Connect, and immediately just set up SSL
+
 enum TLSMethod {
-	TLS_METHOD_NONE = 0,
-	TLS_METHOD_STARTTLS,
-	TLS_METHOD_SMTPS,
+	TLS_METHOD_NONE = 0, # Usual port 465
+	TLS_METHOD_STARTTLS, # Usual port 465
+	TLS_METHOD_SMTPS, # Usual port 587
 }
 
 export(int, "NONE,STARTTLS,SMTPS") var tls_method : int = TLSMethod.TLS_METHOD_SMTPS
@@ -56,8 +67,6 @@ export(String) var server_auth_password: String
 export(int, "Plain,Login") var server_auth_method: int = ServerAuthMethod.LOGIN
 
 # Networking
-#	opts->verify_mode = TLS_VERIFY_NONE;
-#var tls_options: TLSOptions = TLSOptions.client_unsafe()
 var tls_client: StreamPeerSSL = StreamPeerSSL.new()
 var tcp_client: StreamPeerTCP = StreamPeerTCP.new()
 
@@ -204,14 +213,12 @@ func _process(delta: float) -> void:
 					"334":
 						match session_status:
 							SessionStatus.AUTH_LOGIN:
-								#TODO VXNlcm5hbWU6?
 								if msg.begins_with("334 VXNlcm5hbWU6"):
 									if not write_command(encode_username()):
 										return
 									session_status = SessionStatus.USERNAME
 							
 							SessionStatus.USERNAME:
-								#TODO UGFzc3dvcmQ6?
 								if msg.begins_with("334 UGFzc3dvcmQ6"):
 									if not write_command(encode_password()):
 										return
