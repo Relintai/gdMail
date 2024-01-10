@@ -64,6 +64,9 @@ var tcp_client: StreamPeerTCP = StreamPeerTCP.new()
 #SessionStatus
 var session_status: int = SessionStatus.NONE
 
+export(String) var email_default_sender_email : String
+export(String) var email_default_sender_name : String
+
 var email: Email = null
 var to_index: int = 0
 
@@ -187,12 +190,14 @@ func _process(delta: float) -> void:
 					"334":
 						match session_status:
 							SessionStatus.AUTH_LOGIN:
+								#TODO VXNlcm5hbWU6?
 								if msg.begins_with("334 VXNlcm5hbWU6"):
 									if not write_command(encode_username()):
 										return
 									session_status = SessionStatus.USERNAME
 							
 							SessionStatus.USERNAME:
+								#TODO UGFzc3dvcmQ6?
 								if msg.begins_with("334 UGFzc3dvcmQ6"):
 									if not write_command(encode_password()):
 										return
@@ -214,7 +219,25 @@ func _process(delta: float) -> void:
 		
 		if email != null and (session_status == SessionStatus.EHLO_ACK or session_status == SessionStatus.AUTHENTICATED):
 			session_status = SessionStatus.MAIL_FROM
-			if not write_command("MAIL FROM:<%s>" % email.from.address):
+			
+			var fn : String
+			
+			if email.from_address.size() > 0:
+				if email.from_personal.size() > 0:
+					fn = email.from_personal + " "
+					
+				fn += "<"
+				fn += email.from_address
+				fn += ">"
+			else:
+				if email_default_sender_name.size() > 0:
+					fn = email_default_sender_name + " "
+				
+				fn += "<"
+				fn += email_default_sender_email
+				fn += ">"
+				
+			if not write_command("MAIL FROM: " + fn):
 				return
 		
 		else:
