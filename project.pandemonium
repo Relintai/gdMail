@@ -15,11 +15,6 @@ _global_script_classes=[ {
 "path": "res://addons/gdmail/src/email.gd"
 }, {
 "base": "Reference",
-"class": @"InternetAddress",
-"language": @"GDScript",
-"path": "res://addons/gdmail/src/internet_address.gd"
-}, {
-"base": "Reference",
 "class": @"SMTPAuthentication",
 "language": @"GDScript",
 "path": "res://addons/gdmail/src/smtp_authentication.gd"
@@ -31,7 +26,6 @@ _global_script_classes=[ {
 } ]
 _global_script_class_icons={
 @"Email": "",
-@"InternetAddress": "",
 @"SMTPAuthentication": "",
 @"SMTPClientNode": ""
 }
