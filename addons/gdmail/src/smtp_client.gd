@@ -29,6 +29,8 @@ enum SessionStatus {
 	AUTHENTICATED
 }
 
+export(String) var client_id: String = "smtp.godotengine.org"
+
 export(String) var host: String = ""
 export(int) var port: int = 25
 export(bool) var tls: bool = false
@@ -101,7 +103,7 @@ func _process(delta: float) -> void:
 					"220":
 						match session_status:
 							SessionStatus.HELO:
-								if not write_command("EHLO smtp.godotengine.org"):
+								if not write_command("EHLO " + client_id):
 									return
 								session_status = SessionStatus.EHLO
 							
@@ -185,8 +187,8 @@ func _process(delta: float) -> void:
 						printerr(msg)
 			else:
 				if tls_started and not tls_established:
-					tls_established = true                      
-					if not write_command("EHLO smtp.godotengine.org"):
+					tls_established = true
+					if not write_command("EHLO " + client_id):
 						return
 		
 		if email != null and (session_status == SessionStatus.EHLO_ACK or session_status == SessionStatus.AUTHENTICATED):
