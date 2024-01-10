@@ -67,6 +67,9 @@ export(int, "Plain,Login") var server_auth_method : int = ServerAuthMethod.SERVE
 export(String) var email_default_sender_email : String
 export(String) var email_default_sender_name : String
 
+export(bool) var use_threading : bool = true
+export(int) var thread_sleep_usec : int = 10000 # 10 msec
+
 # Networking
 var _tls_client : StreamPeerSSL = StreamPeerSSL.new()
 var _tcp_client : StreamPeerTCP = StreamPeerTCP.new()
@@ -80,17 +83,43 @@ var _current_cc_index : int = 0
 var _current_tls_started : bool = false
 var _current_tls_established : bool = false
 
+# Threading
+var _worker_thread_running : bool = true
+var _worker_thread : Thread
+var _worker_semaphore : Semaphore = Semaphore.new()
+var _mail_queue_mutex : Mutex = Mutex.new()
+
+var _mail_queue : Array
+
 func send_email(p_email: Email) -> void:
+	if !is_inside_tree():
+		PLogger.log_error("send_email !is_inside_tree()")
+		return
+		
+	if use_threading:
+		_mail_queue_mutex.lock()
+		_mail_queue.push_back(p_email)
+		_mail_queue_mutex.unlock()
+		
+		_worker_semaphore.post()
+	else:
+		_send_email(p_email)
+	
+func _send_email(p_email: Email) -> void:
 	_current_session_email = p_email
+	
+	if !_current_session_email:
+		return
 	
 	#Error
 	var err: int = _tcp_client.connect_to_host(host, port)
 	if err != OK:
-		printerr("Could not connect!")
+		printerr("Could not connect! " + str(err))
 		var error_body: Dictionary = { "message": "Error connecting to host.", "code": err }
 		emit_signal(@"error", error_body)
 		emit_signal(@"result", { "success": false, "error": error_body })
-		set_process(false)
+		if !use_threading:
+			set_process(false)
 		
 	if tls_method == TLSMethod.TLS_METHOD_SMTPS:
 		#Error
@@ -101,14 +130,17 @@ func send_email(p_email: Email) -> void:
 			var error_body: Dictionary = { "message": "Error connecting to TLS Stream.", "code": err }
 			emit_signal(@"error", error_body)
 			emit_signal(@"result", { "success": false, "error": error_body })
-			set_process(false)
+			if !use_threading:
+				set_process(false)
 			return
 			
 		_current_tls_started = true
 		_current_tls_established = true
 	
 	_current_session_status = SessionStatus.HELO
-	set_process(true)
+	
+	if !use_threading:
+		set_process(true)
 
 func poll_client() -> int: #Error
 	if _current_tls_started or _current_tls_established:
@@ -185,7 +217,8 @@ func close_connection() -> void:
 	_current_to_index = 0
 	_current_tls_started = false
 	_current_tls_established = false
-	set_process(false)
+	if !use_threading:
+		set_process(false)
 
 func encode_username() -> String:
 	return Marshalls.utf8_to_base64(server_auth_username)
@@ -193,7 +226,7 @@ func encode_username() -> String:
 func encode_password() -> String:
 	return Marshalls.utf8_to_base64(server_auth_password)
 
-func _process(delta: float) -> void:
+func _process_email() -> void:
 	if _current_session_status == SessionStatus.SERVER_ERROR:
 		close_connection()
 	
@@ -337,5 +370,53 @@ func _process(delta: float) -> void:
 	else:
 		printerr("Couldn't poll!")
 
+func _worker_thread_func(user_data):
+	while _worker_thread_running:
+		var _mail : Email = null
+		
+		print("Thread loop")
+		
+		_mail_queue_mutex.lock()
+		_mail = _mail_queue.pop_front()
+		_mail_queue_mutex.unlock()
+		
+		if _mail:
+			_send_email(_mail)
+			
+		while _current_session_email:
+			OS.delay_usec(thread_sleep_usec)
+			
+			# Early return if we want to quit
+			if !_worker_thread_running:
+				close_connection()
+				return
+			
+			_process_email()
+			
+		if !_worker_thread_running:
+			return
+		
+		if _mail_queue.size() == 0:
+			_worker_semaphore.wait()
+
+func _process(delta: float) -> void:
+	if use_threading:
+		set_process(false)
+		return
+		
+	_process_email()
+
 func _ready() -> void:
 	set_process(false)
+	
+	if use_threading:
+		_worker_thread_running = true
+		_worker_thread = Thread.new()
+		_worker_thread.start(self, @"_worker_thread_func", 1)
+		
+func _exit_tree() -> void:
+	if _worker_thread:
+		_worker_thread_running = false
+		_worker_semaphore.post()
+		_worker_thread.wait_to_finish()
+		_worker_thread = null
