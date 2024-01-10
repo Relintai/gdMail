@@ -33,9 +33,16 @@ export(String) var client_id: String = "smtp.godotengine.org"
 
 export(String) var host: String = ""
 export(int) var port: int = 25
-export(bool) var tls: bool = false
-export(bool) var tls_started: bool = false
-export(bool) var tls_established: bool = false
+
+enum TLSMethod {
+	TLS_METHOD_NONE = 0,
+	TLS_METHOD_STARTTLS,
+	TLS_METHOD_SMTPS,
+}
+
+export(int, "NONE,STARTTLS,SMTPS") var tls_method : int = TLSMethod.TLS_METHOD_SMTPS
+var tls_started : bool = false
+var tls_established : bool = false
 
 # Authentication
 enum ServerAuthMethod {
@@ -75,6 +82,20 @@ func send_email(email: Email) -> void:
 		emit_signal(@"error", error_body)
 		emit_signal(@"result", { "success": false, "error": error_body })
 		set_process(false)
+		
+	if tls_method == TLSMethod.TLS_METHOD_SMTPS:
+		#Error
+		err = tls_client.connect_to_stream(tcp_client, false, host)
+		#var err: int = tls_client.connect_to_stream(tcp_client, host, tls_options)
+		if err != OK:
+			session_status = SessionStatus.SERVER_ERROR
+			var error_body: Dictionary = { "message": "Error connecting to TLS Stream.", "code": err }
+			emit_signal("@error", error_body)
+			emit_signal(@"result", { "success": false, "error": error_body })
+			set_process(false)
+			return
+			
+		tls_started = true
 	
 	session_status = SessionStatus.HELO
 	set_process(true)
@@ -122,7 +143,7 @@ func _process(delta: float) -> void:
 					"250":
 						match session_status:
 							SessionStatus.EHLO:
-								if tls:
+								if tls_method == TLSMethod.TLS_METHOD_STARTTLS:
 									if not write_command("STARTTLS"):
 										return
 									session_status = SessionStatus.STARTTLS
