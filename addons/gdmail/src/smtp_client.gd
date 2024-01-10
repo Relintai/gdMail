@@ -32,7 +32,7 @@ enum SessionStatus {
 export(String) var client_id: String = "smtp.godotengine.org"
 
 export(String) var host: String = ""
-export(int) var port: int = 25
+export(int) var port: int = 465
 
 enum TLSMethod {
 	TLS_METHOD_NONE = 0,
