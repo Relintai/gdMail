@@ -1,22 +1,23 @@
-extends RefCounted
+extends Reference
 class_name SMTPAuthentication
 
 enum Method {
-    PLAIN,
-    LOGIN
+	PLAIN,
+	LOGIN
 }
 
 var username: String
 var password: String
-var method: Method
+#Method
+var method: int
 
-func _init(username: String, password: String, method: Method = Method.LOGIN) -> void:
-    self.username = username
-    self.password = password
-    self.method = method
+func _init(username: String, password: String, method: int = Method.LOGIN) -> void:
+	self.username = username
+	self.password = password
+	self.method = method
 
 func encode_username() -> String:
-    return Marshalls.utf8_to_base64(username)
+	return Marshalls.utf8_to_base64(username)
 
 func encode_password() -> String:
-    return Marshalls.utf8_to_base64(password)
+	return Marshalls.utf8_to_base64(password)

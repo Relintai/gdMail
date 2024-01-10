@@ -9,23 +9,23 @@
 config_version=4
 
 _global_script_classes=[ {
-"base": "RefCounted",
+"base": "Reference",
 "class": @"Email",
 "language": @"GDScript",
 "path": "res://addons/gdmail/src/email.gd"
 }, {
-"base": "RefCounted",
+"base": "Reference",
 "class": @"InternetAddress",
 "language": @"GDScript",
 "path": "res://addons/gdmail/src/internet_address.gd"
 }, {
-"base": "RefCounted",
+"base": "Reference",
 "class": @"SMTPAuthentication",
 "language": @"GDScript",
 "path": "res://addons/gdmail/src/smtp_authentication.gd"
 }, {
 "base": "Node",
-"class": @"SMTPClient",
+"class": @"SMTPClientNode",
 "language": @"GDScript",
 "path": "res://addons/gdmail/src/smtp_client.gd"
 } ]
@@ -33,7 +33,7 @@ _global_script_class_icons={
 @"Email": "",
 @"InternetAddress": "",
 @"SMTPAuthentication": "",
-@"SMTPClient": ""
+@"SMTPClientNode": ""
 }
 
 [application]
