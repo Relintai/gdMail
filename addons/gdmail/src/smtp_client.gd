@@ -70,10 +70,6 @@ export(String) var email_default_sender_name : String
 var email: Email = null
 var to_index: int = 0
 
-# Called when the node enters the scene tree for the first time.
-func _ready():
-	session_status = SessionStatus.NONE
-
 func send_email(email: Email) -> void:
 	self.email = email
 	
@@ -99,8 +95,10 @@ func send_email(email: Email) -> void:
 			return
 			
 		tls_started = true
+		tls_established = true
 	
 	session_status = SessionStatus.HELO
+
 	set_process(true)
 
 func poll_client() -> int: #Error
@@ -122,14 +120,13 @@ func _process(delta: float) -> void:
 			
 			if bytes > 0:
 				var msg: String = (tcp_client if not tls_established else tls_client).get_string(bytes)
+				print("RECEIVED: " + msg)
 				var code: String = msg.left(3)
 				match code:
 					"220":
 						match session_status:
 							SessionStatus.HELO:
-								if not write_command("EHLO " + client_id):
-									return
-								session_status = SessionStatus.EHLO
+								start_hello()
 							
 							SessionStatus.STARTTLS:
 								#Error
@@ -141,26 +138,43 @@ func _process(delta: float) -> void:
 									emit_signal("@error", error_body)
 									emit_signal(@"result", { "success": false, "error": error_body })
 									return
+									
 								tls_started = true
 								
+								# We need to do HELO + EHLO again
+								#session_status = SessionStatus.HELO
+								start_hello()
 					"250":
 						match session_status:
-							SessionStatus.EHLO:
+							SessionStatus.HELO_ACK:
+								if not write_command("EHLO " + client_id):
+									return
+											
+								session_status = SessionStatus.EHLO_ACK
+									
+							SessionStatus.EHLO_ACK:
 								if tls_method == TLSMethod.TLS_METHOD_STARTTLS:
-									if not write_command("STARTTLS"):
-										return
-									session_status = SessionStatus.STARTTLS
+									if tls_started:
+										# second round of HELO + EHLO done
+										if not start_auth():
+											return
+									else:
+										if not write_command("STARTTLS"):
+											return
+											
+										session_status = SessionStatus.STARTTLS
 								else:
-									session_status = SessionStatus.EHLO_ACK
-							
-							SessionStatus.STARTTLS:
-									if not write_command("AUTH LOGIN"):
+									if not start_auth():
 										return
-									session_status = SessionStatus.AUTH_LOGIN
 							
 							SessionStatus.MAIL_FROM:
-								if not write_command("RCPT TO:<%s>" % email.to[to_index].address):
+								#TODO
+								#Response:
+								#250 2.1.5 Ok
+								#500 5.5.2 Error: bad syntax
+								if not write_command("RCPT TO: <%s>" % email.to[to_index].address + "\n"):
 									return
+									
 								session_status = SessionStatus.RCPT_TO
 								to_index += 1
 							
@@ -205,37 +219,25 @@ func _process(delta: float) -> void:
 					"354":
 						match session_status:
 							SessionStatus.DATA:
-								if not (write_data(email.to_string()) == OK):
+								#TODO To has bad szntax
+								#TODO ADD cc
+								if not (write_data(email.get_email_data_string(email_default_sender_name, email_default_sender_email)) == OK):
 									session_status = SessionStatus.SERVER_ERROR
 									return
 								session_status = SessionStatus.DATA_ACK
 					_:
 						printerr(msg)
-			else:
-				if tls_started and not tls_established:
-					tls_established = true
-					if not write_command("EHLO " + client_id):
-						return
+						
 		
-		if email != null and (session_status == SessionStatus.EHLO_ACK or session_status == SessionStatus.AUTHENTICATED):
+		if email != null and (session_status == SessionStatus.AUTHENTICATED):
 			session_status = SessionStatus.MAIL_FROM
 			
 			var fn : String
 			
-			if email.from_address.size() > 0:
-				if email.from_personal.size() > 0:
-					fn = email.from_personal + " "
-					
-				fn += "<"
-				fn += email.from_address
-				fn += ">"
+			if email.sender_address.size() > 0:
+				fn = "<" + email.sender_address + ">"
 			else:
-				if email_default_sender_name.size() > 0:
-					fn = email_default_sender_name + " "
-				
-				fn += "<"
-				fn += email_default_sender_email
-				fn += ">"
+				fn = "<" + email_default_sender_email + ">"
 				
 			if not write_command("MAIL FROM: " + fn):
 				return
@@ -245,8 +247,24 @@ func _process(delta: float) -> void:
 	else:
 		printerr("Couldn't poll!")
 
+func start_auth() -> bool:
+	if not write_command("AUTH LOGIN"):
+		return false
+	
+	session_status = SessionStatus.AUTH_LOGIN
+	return true
+
+func start_hello() -> bool:
+	#session_status = SessionStatus.HELO
+	if not write_command("HELO " + client_id):
+		return false
+		
+	session_status = SessionStatus.HELO_ACK
+	return true
+
 func write_command(command: String) -> bool:
 	#Error
+	print("COMMAND: " + command)
 	var err: int = (tls_client if tls_established else tcp_client).put_data((command + "\n").to_utf8())
 	if err != OK:
 		session_status = SessionStatus.COMMAND_NOT_SENT
@@ -274,3 +292,6 @@ func encode_username() -> String:
 
 func encode_password() -> String:
 	return Marshalls.utf8_to_base64(server_auth_password)
+
+func _ready() -> void:
+	set_process(false)
