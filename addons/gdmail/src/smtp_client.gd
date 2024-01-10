@@ -29,7 +29,7 @@ enum SessionStatus {
 	AUTHENTICATED
 }
 
-export(String) var client_id: String = "smtp.godotengine.org"
+export(String) var client_id: String = "smtp.pandemoniumengine.org"
 
 export(String) var host: String = ""
 export(int) var port: int = 465
