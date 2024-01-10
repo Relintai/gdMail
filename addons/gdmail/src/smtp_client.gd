@@ -196,7 +196,7 @@ func client_put_data(data : PoolByteArray) -> int:
 
 func write_command(command: String) -> bool:
 	#Error
-	print("COMMAND: " + command)
+	#print("COMMAND: " + command)
 	var err: int = client_put_data((command + "\n").to_utf8())
 	if err != OK:
 		_current_session_status = SessionStatus.COMMAND_NOT_SENT
@@ -238,7 +238,7 @@ func _process_email() -> void:
 			
 			if bytes > 0:
 				var msg: String = client_get_string(bytes)
-				print("RECEIVED: " + msg)
+				#print("RECEIVED: " + msg)
 				var code: String = msg.left(3)
 				match code:
 					"220":
@@ -373,8 +373,6 @@ func _process_email() -> void:
 func _worker_thread_func(user_data):
 	while _worker_thread_running:
 		var _mail : Email = null
-		
-		print("Thread loop")
 		
 		_mail_queue_mutex.lock()
 		_mail = _mail_queue.pop_front()
