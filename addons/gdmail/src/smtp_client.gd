@@ -52,8 +52,6 @@ enum TLSMethod {
 }
 
 export(int, "NONE,STARTTLS,SMTPS") var tls_method : int = TLSMethod.TLS_METHOD_SMTPS
-var tls_started : bool = false
-var tls_established : bool = false
 
 # Authentication
 enum ServerAuthMethod {
@@ -70,8 +68,8 @@ export(String) var email_default_sender_email : String
 export(String) var email_default_sender_name : String
 
 # Networking
-var tls_client : StreamPeerSSL = StreamPeerSSL.new()
-var tcp_client : StreamPeerTCP = StreamPeerTCP.new()
+var _tls_client : StreamPeerSSL = StreamPeerSSL.new()
+var _tcp_client : StreamPeerTCP = StreamPeerTCP.new()
 
 #SessionStatus
 var _current_session_status : int = SessionStatus.NONE
@@ -79,11 +77,14 @@ var _current_session_email : Email = null
 var _current_to_index : int = 0
 var _current_cc_index : int = 0
 
+var _current_tls_started : bool = false
+var _current_tls_established : bool = false
+
 func send_email(p_email: Email) -> void:
 	_current_session_email = p_email
 	
 	#Error
-	var err: int = tcp_client.connect_to_host(host, port)
+	var err: int = _tcp_client.connect_to_host(host, port)
 	if err != OK:
 		printerr("Could not connect!")
 		var error_body: Dictionary = { "message": "Error connecting to host.", "code": err }
@@ -93,8 +94,8 @@ func send_email(p_email: Email) -> void:
 		
 	if tls_method == TLSMethod.TLS_METHOD_SMTPS:
 		#Error
-		err = tls_client.connect_to_stream(tcp_client, false, host)
-		#var err: int = tls_client.connect_to_stream(tcp_client, host, tls_options)
+		err = _tls_client.connect_to_stream(_tcp_client, false, host)
+		#var err: int = _tls_client.connect_to_stream(_tcp_client, host, tls_options)
 		if err != OK:
 			_current_session_status = SessionStatus.SERVER_ERROR
 			var error_body: Dictionary = { "message": "Error connecting to TLS Stream.", "code": err }
@@ -103,37 +104,94 @@ func send_email(p_email: Email) -> void:
 			set_process(false)
 			return
 			
-		tls_started = true
-		tls_established = true
+		_current_tls_started = true
+		_current_tls_established = true
 	
 	_current_session_status = SessionStatus.HELO
 	set_process(true)
 
 func poll_client() -> int: #Error
-	if tls_started or tls_established:
-		tls_client.poll()
+	if _current_tls_started or _current_tls_established:
+		_tls_client.poll()
 		return 0
 	else:
-		#return tcp_client.poll()
+		#return _tcp_client.poll()
 		return OK
 
 func client_get_status() -> bool:
-	if tls_started:
-		return tls_client.get_status() == StreamPeerSSL.STATUS_CONNECTED
+	if _current_tls_started:
+		return _tls_client.get_status() == StreamPeerSSL.STATUS_CONNECTED
 	
-	return tcp_client.get_status() == StreamPeerTCP.STATUS_CONNECTED
+	return _tcp_client.get_status() == StreamPeerTCP.STATUS_CONNECTED
 
 func client_get_available_bytes() -> int:
-	if tls_started:
-		return tls_client.get_available_bytes()
+	if _current_tls_started:
+		return _tls_client.get_available_bytes()
 	
-	return tcp_client.get_available_bytes()
+	return _tcp_client.get_available_bytes()
 
 func client_get_string(bytes : int) -> String:
-	if tls_started:
-		return tls_client.get_string(bytes)
+	if _current_tls_started:
+		return _tls_client.get_string(bytes)
 	
-	return tcp_client.get_string(bytes)
+	return _tcp_client.get_string(bytes)
+
+
+func start_auth() -> bool:
+	if server_auth_method == ServerAuthMethod.SERVER_AUTH_PLAIN:
+		_current_session_status = SessionStatus.AUTHENTICATED
+		return true
+	
+	if not write_command("AUTH LOGIN"):
+		return false
+	
+	_current_session_status = SessionStatus.AUTH_LOGIN
+	return true
+
+func start_hello() -> bool:
+	#_current_session_status = SessionStatus.HELO
+	if not write_command("HELO " + client_id):
+		return false
+		
+	_current_session_status = SessionStatus.HELO_ACK
+	return true
+
+func client_put_data(data : PoolByteArray) -> int:
+	if _current_tls_established:
+		return _tls_client.put_data(data)
+	
+	return _tcp_client.put_data(data)
+
+func write_command(command: String) -> bool:
+	#Error
+	print("COMMAND: " + command)
+	var err: int = client_put_data((command + "\n").to_utf8())
+	if err != OK:
+		_current_session_status = SessionStatus.COMMAND_NOT_SENT
+		var error_body: Dictionary = { "message": "Session error on command: %s" % command, "code": err }
+		emit_signal(@"error", error_body)
+		emit_signal(@"result", { "success": false, "error": error_body })
+		
+	return (err == OK)
+
+func write_data(data: String) -> int: #Error
+	return client_put_data((data + "\r\n.\r\n").to_utf8())
+
+func close_connection() -> void:
+	_current_session_status = SessionStatus.NONE
+	_tls_client.disconnect_from_stream()
+	_tcp_client.disconnect_from_host()
+	_current_session_email = null
+	_current_to_index = 0
+	_current_tls_started = false
+	_current_tls_established = false
+	set_process(false)
+
+func encode_username() -> String:
+	return Marshalls.utf8_to_base64(server_auth_username)
+
+func encode_password() -> String:
+	return Marshalls.utf8_to_base64(server_auth_password)
 
 func _process(delta: float) -> void:
 	if _current_session_status == SessionStatus.SERVER_ERROR:
@@ -157,8 +215,8 @@ func _process(delta: float) -> void:
 							
 							SessionStatus.STARTTLS:
 								#Error
-								var err: int = tls_client.connect_to_stream(tcp_client, false, host)
-								#var err: int = tls_client.connect_to_stream(tcp_client, host, tls_options)
+								var err: int = _tls_client.connect_to_stream(_tcp_client, false, host)
+								#var err: int = _tls_client.connect_to_stream(_tcp_client, host, tls_options)
 								if err != OK:
 									_current_session_status = SessionStatus.SERVER_ERROR
 									var error_body: Dictionary = { "message": "Error connecting to TLS Stream.", "code": err }
@@ -166,8 +224,8 @@ func _process(delta: float) -> void:
 									emit_signal(@"result", { "success": false, "error": error_body })
 									return
 									
-								tls_started = true
-								tls_established = true
+								_current_tls_started = true
+								_current_tls_established = true
 							
 								# We need to do HELO + EHLO again
 								_current_session_status = SessionStatus.HELO
@@ -183,7 +241,7 @@ func _process(delta: float) -> void:
 									
 							SessionStatus.EHLO_ACK:
 								if tls_method == TLSMethod.TLS_METHOD_STARTTLS:
-									if tls_started:
+									if _current_tls_started:
 										# second round of HELO + EHLO done
 										if not start_auth():
 											return
@@ -261,7 +319,6 @@ func _process(delta: float) -> void:
 					_:
 						printerr(msg)
 
-		
 		if _current_session_email != null and (_current_session_status == SessionStatus.AUTHENTICATED):
 			_current_session_status = SessionStatus.MAIL_FROM
 			
@@ -279,56 +336,6 @@ func _process(delta: float) -> void:
 			return
 	else:
 		printerr("Couldn't poll!")
-
-func start_auth() -> bool:
-	if server_auth_method == ServerAuthMethod.SERVER_AUTH_PLAIN:
-		_current_session_status = SessionStatus.AUTHENTICATED
-		return true
-	
-	if not write_command("AUTH LOGIN"):
-		return false
-	
-	_current_session_status = SessionStatus.AUTH_LOGIN
-	return true
-
-func start_hello() -> bool:
-	#_current_session_status = SessionStatus.HELO
-	if not write_command("HELO " + client_id):
-		return false
-		
-	_current_session_status = SessionStatus.HELO_ACK
-	return true
-
-func write_command(command: String) -> bool:
-	#Error
-	print("COMMAND: " + command)
-	var err: int = (tls_client if tls_established else tcp_client).put_data((command + "\n").to_utf8())
-	if err != OK:
-		_current_session_status = SessionStatus.COMMAND_NOT_SENT
-		var error_body: Dictionary = { "message": "Session error on command: %s" % command, "code": err }
-		emit_signal(@"error", error_body)
-		emit_signal(@"result", { "success": false, "error": error_body })
-		
-	return (err == OK)
-
-func write_data(data: String) -> int: #Error
-	return (tls_client if tls_established else tcp_client).put_data((data + "\r\n.\r\n").to_utf8())
-
-func close_connection() -> void:
-	_current_session_status = SessionStatus.NONE
-	tls_client.disconnect_from_stream()
-	tcp_client.disconnect_from_host()
-	_current_session_email = null
-	_current_to_index = 0
-	tls_started = false
-	tls_established = false
-	set_process(false)
-
-func encode_username() -> String:
-	return Marshalls.utf8_to_base64(server_auth_username)
-
-func encode_password() -> String:
-	return Marshalls.utf8_to_base64(server_auth_password)
 
 func _ready() -> void:
 	set_process(false)
