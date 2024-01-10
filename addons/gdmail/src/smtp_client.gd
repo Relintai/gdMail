@@ -31,8 +31,8 @@ enum SessionStatus {
 
 export(String) var client_id: String = "smtp.pandemoniumengine.org"
 
-export(String) var host: String = ""
-export(int) var port: int = 465
+export(String) var host : String = ""
+export(int) var port : int = 465
 
 # TLS_METHOD_NONE: 
 # No encryption.
@@ -61,17 +61,17 @@ enum ServerAuthMethod {
 	SERVER_AUTH_LOGIN
 }
 
-export(String) var server_auth_username: String
-export(String) var server_auth_password: String
+export(String) var server_auth_username : String
+export(String) var server_auth_password : String
 #Method
 export(int, "Plain,Login") var server_auth_method : int = ServerAuthMethod.SERVER_AUTH_LOGIN
 
-# Networking
-var tls_client: StreamPeerSSL = StreamPeerSSL.new()
-var tcp_client: StreamPeerTCP = StreamPeerTCP.new()
-
 export(String) var email_default_sender_email : String
 export(String) var email_default_sender_name : String
+
+# Networking
+var tls_client : StreamPeerSSL = StreamPeerSSL.new()
+var tcp_client : StreamPeerTCP = StreamPeerTCP.new()
 
 #SessionStatus
 var _current_session_status : int = SessionStatus.NONE
