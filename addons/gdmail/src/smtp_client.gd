@@ -29,14 +29,24 @@ enum SessionStatus {
 	AUTHENTICATED
 }
 
-var host: String = ""
-var port: int = 25
-var tls: bool = false
-var tls_started: bool = false
-var tls_established: bool = false
-var authentication: SMTPAuthentication = null
+export(String) var host: String = ""
+export(int) var port: int = 25
+export(bool) var tls: bool = false
+export(bool) var tls_started: bool = false
+export(bool) var tls_established: bool = false
 
+# Authentication
+enum ServerAuthMethod {
+	PLAIN,
+	LOGIN
+}
 
+export(String) var server_auth_username: String
+export(String) var server_auth_password: String
+#Method
+export(int, "Plain,Login") var server_auth_method: int = ServerAuthMethod.LOGIN
+
+# Networking
 #	opts->verify_mode = TLS_VERIFY_NONE;
 #var tls_options: TLSOptions = TLSOptions.client_unsafe()
 var tls_client: StreamPeerSSL = StreamPeerSSL.new()
@@ -47,13 +57,6 @@ var session_status: int = SessionStatus.NONE
 
 var email: Email = null
 var to_index: int = 0
-
-func _init(host: String, port: int = 25, tls: bool = false, authentication: SMTPAuthentication = null) -> void:
-	self.host = host
-	self.port = port
-	self.tls = tls
-	self.authentication = authentication
-
 
 # Called when the node enters the scene tree for the first time.
 func _ready():
@@ -162,13 +165,13 @@ func _process(delta: float) -> void:
 						match session_status:
 							SessionStatus.AUTH_LOGIN:
 								if msg.begins_with("334 VXNlcm5hbWU6"):
-									if not write_command(authentication.encode_username()):
+									if not write_command(encode_username()):
 										return
 									session_status = SessionStatus.USERNAME
 							
 							SessionStatus.USERNAME:
 								if msg.begins_with("334 UGFzc3dvcmQ6"):
-									if not write_command(authentication.encode_password()):
+									if not write_command(encode_password()):
 										return
 									session_status = SessionStatus.PASSWORD
 					"354":
@@ -219,3 +222,9 @@ func close_connection() -> void:
 	tls_started = false
 	tls_established = false
 	set_process(false)
+
+func encode_username() -> String:
+	return Marshalls.utf8_to_base64(server_auth_username)
+
+func encode_password() -> String:
+	return Marshalls.utf8_to_base64(server_auth_password)
