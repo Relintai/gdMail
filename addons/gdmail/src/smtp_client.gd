@@ -32,7 +32,7 @@ enum SessionStatus {
 export(String) var client_id: String = "smtp.pandemoniumengine.org"
 
 export(String) var host: String = ""
-export(int) var port: int = 465
+export(int) var port: int = 587
 
 # TLS_METHOD_NONE: 
 # No encryption.
