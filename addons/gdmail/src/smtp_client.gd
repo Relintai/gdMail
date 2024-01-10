@@ -57,14 +57,14 @@ var tls_established : bool = false
 
 # Authentication
 enum ServerAuthMethod {
-	PLAIN,
-	LOGIN
+	SERVER_AUTH_PLAIN,
+	SERVER_AUTH_LOGIN
 }
 
 export(String) var server_auth_username: String
 export(String) var server_auth_password: String
 #Method
-export(int, "Plain,Login") var server_auth_method: int = ServerAuthMethod.LOGIN
+export(int, "Plain,Login") var server_auth_method: int = ServerAuthMethod.SERVER_AUTH_LOGIN
 
 # Networking
 var tls_client: StreamPeerSSL = StreamPeerSSL.new()
@@ -255,6 +255,10 @@ func _process(delta: float) -> void:
 		printerr("Couldn't poll!")
 
 func start_auth() -> bool:
+	if server_auth_method == ServerAuthMethod.SERVER_AUTH_PLAIN:
+		session_status = SessionStatus.AUTHENTICATED
+		return true
+	
 	if not write_command("AUTH LOGIN"):
 		return false
 	
