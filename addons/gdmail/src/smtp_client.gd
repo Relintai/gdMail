@@ -70,18 +70,17 @@ export(int, "Plain,Login") var server_auth_method : int = ServerAuthMethod.SERVE
 var tls_client: StreamPeerSSL = StreamPeerSSL.new()
 var tcp_client: StreamPeerTCP = StreamPeerTCP.new()
 
-#SessionStatus
-var session_status: int = SessionStatus.NONE
-
 export(String) var email_default_sender_email : String
 export(String) var email_default_sender_name : String
 
-var email: Email = null
-var to_index: int = 0
-var cc_index: int = 0
+#SessionStatus
+var _current_session_status : int = SessionStatus.NONE
+var _current_session_email : Email = null
+var _current_to_index : int = 0
+var _current_cc_index : int = 0
 
-func send_email(email: Email) -> void:
-	self.email = email
+func send_email(p_email: Email) -> void:
+	_current_session_email = p_email
 	
 	#Error
 	var err: int = tcp_client.connect_to_host(host, port)
@@ -97,7 +96,7 @@ func send_email(email: Email) -> void:
 		err = tls_client.connect_to_stream(tcp_client, false, host)
 		#var err: int = tls_client.connect_to_stream(tcp_client, host, tls_options)
 		if err != OK:
-			session_status = SessionStatus.SERVER_ERROR
+			_current_session_status = SessionStatus.SERVER_ERROR
 			var error_body: Dictionary = { "message": "Error connecting to TLS Stream.", "code": err }
 			emit_signal(@"error", error_body)
 			emit_signal(@"result", { "success": false, "error": error_body })
@@ -107,7 +106,7 @@ func send_email(email: Email) -> void:
 		tls_started = true
 		tls_established = true
 	
-	session_status = SessionStatus.HELO
+	_current_session_status = SessionStatus.HELO
 	set_process(true)
 
 func poll_client() -> int: #Error
@@ -137,7 +136,7 @@ func client_get_string(bytes : int) -> String:
 	return tcp_client.get_string(bytes)
 
 func _process(delta: float) -> void:
-	if session_status == SessionStatus.SERVER_ERROR:
+	if _current_session_status == SessionStatus.SERVER_ERROR:
 		close_connection()
 	
 	if poll_client() == OK:
@@ -152,7 +151,7 @@ func _process(delta: float) -> void:
 				var code: String = msg.left(3)
 				match code:
 					"220":
-						match session_status:
+						match _current_session_status:
 							SessionStatus.HELO:
 								start_hello()
 							
@@ -161,7 +160,7 @@ func _process(delta: float) -> void:
 								var err: int = tls_client.connect_to_stream(tcp_client, false, host)
 								#var err: int = tls_client.connect_to_stream(tcp_client, host, tls_options)
 								if err != OK:
-									session_status = SessionStatus.SERVER_ERROR
+									_current_session_status = SessionStatus.SERVER_ERROR
 									var error_body: Dictionary = { "message": "Error connecting to TLS Stream.", "code": err }
 									emit_signal("@error", error_body)
 									emit_signal(@"result", { "success": false, "error": error_body })
@@ -171,16 +170,16 @@ func _process(delta: float) -> void:
 								tls_established = true
 							
 								# We need to do HELO + EHLO again
-								session_status = SessionStatus.HELO
+								_current_session_status = SessionStatus.HELO
 								start_hello()
 
 					"250":
-						match session_status:
+						match _current_session_status:
 							SessionStatus.HELO_ACK:
 								if not write_command("EHLO " + client_id):
 									return
 											
-								session_status = SessionStatus.EHLO_ACK
+								_current_session_status = SessionStatus.EHLO_ACK
 									
 							SessionStatus.EHLO_ACK:
 								if tls_method == TLSMethod.TLS_METHOD_STARTTLS:
@@ -192,84 +191,84 @@ func _process(delta: float) -> void:
 										if not write_command("STARTTLS"):
 											return
 											
-										session_status = SessionStatus.STARTTLS
+										_current_session_status = SessionStatus.STARTTLS
 								else:
 									if not start_auth():
 										return
 							
 							SessionStatus.MAIL_FROM:
-								if (to_index < email.to.size()):
-									if not write_command("RCPT TO: <%s>" % email.to[to_index].address):
+								if (_current_to_index < _current_session_email.to.size()):
+									if not write_command("RCPT TO: <%s>" % _current_session_email.to[_current_to_index].address):
 										return
-									to_index += 1
+									_current_to_index += 1
 										
-								if (cc_index < email.cc.size()):
-									if not write_command("RCPT TO: <%s>" % email.cc[cc_index].address):
+								if (_current_cc_index < _current_session_email.cc.size()):
+									if not write_command("RCPT TO: <%s>" % _current_session_email.cc[_current_cc_index].address):
 										return
-									cc_index += 1
+									_current_cc_index += 1
 									
-								session_status = SessionStatus.RCPT_TO
+								_current_session_status = SessionStatus.RCPT_TO
 
 							SessionStatus.RCPT_TO:
-								if (to_index < email.to.size()):
-									session_status = SessionStatus.MAIL_FROM
+								if (_current_to_index < _current_session_email.to.size()):
+									_current_session_status = SessionStatus.MAIL_FROM
 									return
 									
-								if (cc_index < email.cc.size()):
-									session_status = SessionStatus.MAIL_FROM
+								if (_current_cc_index < _current_session_email.cc.size()):
+									_current_session_status = SessionStatus.MAIL_FROM
 									return
 								
 								if not write_command("DATA"):
 									return
-								session_status = SessionStatus.DATA
+								_current_session_status = SessionStatus.DATA
 							
 							SessionStatus.DATA_ACK:
 								if not write_command("QUIT"):
 									return
-								session_status = SessionStatus.QUIT
+								_current_session_status = SessionStatus.QUIT
 					"221":
-						match session_status:
+						match _current_session_status:
 							SessionStatus.QUIT:
 								close_connection()
 								emit_signal(@"email_sent")
 								emit_signal(@"result", { "success": true })
 					"235": # Authentication Succeeded
-						match session_status:
+						match _current_session_status:
 							SessionStatus.PASSWORD:
-								session_status = SessionStatus.AUTHENTICATED
+								_current_session_status = SessionStatus.AUTHENTICATED
 					"334":
-						match session_status:
+						match _current_session_status:
 							SessionStatus.AUTH_LOGIN:
 								if msg.begins_with("334 VXNlcm5hbWU6"):
 									if not write_command(encode_username()):
 										return
-									session_status = SessionStatus.USERNAME
+									_current_session_status = SessionStatus.USERNAME
 							
 							SessionStatus.USERNAME:
 								if msg.begins_with("334 UGFzc3dvcmQ6"):
 									if not write_command(encode_password()):
 										return
-									session_status = SessionStatus.PASSWORD
+									_current_session_status = SessionStatus.PASSWORD
 					"354":
-						match session_status:
+						match _current_session_status:
 							SessionStatus.DATA:
 								#TODO To has bad szntax
 								#TODO ADD cc
-								if not (write_data(email.get_email_data_string(email_default_sender_name, email_default_sender_email)) == OK):
-									session_status = SessionStatus.SERVER_ERROR
+								if not (write_data(_current_session_email.get_email_data_string(email_default_sender_name, email_default_sender_email)) == OK):
+									_current_session_status = SessionStatus.SERVER_ERROR
 									return
-								session_status = SessionStatus.DATA_ACK
+								_current_session_status = SessionStatus.DATA_ACK
 					_:
 						printerr(msg)
 
 		
-		if email != null and (session_status == SessionStatus.AUTHENTICATED):
-			session_status = SessionStatus.MAIL_FROM
+		if _current_session_email != null and (_current_session_status == SessionStatus.AUTHENTICATED):
+			_current_session_status = SessionStatus.MAIL_FROM
 			
 			var fn : String
 			
-			if email.sender_address.size() > 0:
-				fn = "<" + email.sender_address + ">"
+			if _current_session_email.sender_address.size() > 0:
+				fn = "<" + _current_session_email.sender_address + ">"
 			else:
 				fn = "<" + email_default_sender_email + ">"
 				
@@ -283,21 +282,21 @@ func _process(delta: float) -> void:
 
 func start_auth() -> bool:
 	if server_auth_method == ServerAuthMethod.SERVER_AUTH_PLAIN:
-		session_status = SessionStatus.AUTHENTICATED
+		_current_session_status = SessionStatus.AUTHENTICATED
 		return true
 	
 	if not write_command("AUTH LOGIN"):
 		return false
 	
-	session_status = SessionStatus.AUTH_LOGIN
+	_current_session_status = SessionStatus.AUTH_LOGIN
 	return true
 
 func start_hello() -> bool:
-	#session_status = SessionStatus.HELO
+	#_current_session_status = SessionStatus.HELO
 	if not write_command("HELO " + client_id):
 		return false
 		
-	session_status = SessionStatus.HELO_ACK
+	_current_session_status = SessionStatus.HELO_ACK
 	return true
 
 func write_command(command: String) -> bool:
@@ -305,7 +304,7 @@ func write_command(command: String) -> bool:
 	print("COMMAND: " + command)
 	var err: int = (tls_client if tls_established else tcp_client).put_data((command + "\n").to_utf8())
 	if err != OK:
-		session_status = SessionStatus.COMMAND_NOT_SENT
+		_current_session_status = SessionStatus.COMMAND_NOT_SENT
 		var error_body: Dictionary = { "message": "Session error on command: %s" % command, "code": err }
 		emit_signal(@"error", error_body)
 		emit_signal(@"result", { "success": false, "error": error_body })
@@ -316,11 +315,11 @@ func write_data(data: String) -> int: #Error
 	return (tls_client if tls_established else tcp_client).put_data((data + "\r\n.\r\n").to_utf8())
 
 func close_connection() -> void:
-	session_status = SessionStatus.NONE
+	_current_session_status = SessionStatus.NONE
 	tls_client.disconnect_from_stream()
 	tcp_client.disconnect_from_host()
-	email = null
-	to_index = 0
+	_current_session_email = null
+	_current_to_index = 0
 	tls_started = false
 	tls_established = false
 	set_process(false)
