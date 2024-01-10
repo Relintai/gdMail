@@ -89,7 +89,7 @@ func send_email(email: Email) -> void:
 		if err != OK:
 			session_status = SessionStatus.SERVER_ERROR
 			var error_body: Dictionary = { "message": "Error connecting to TLS Stream.", "code": err }
-			emit_signal("@error", error_body)
+			emit_signal(@"error", error_body)
 			emit_signal(@"result", { "success": false, "error": error_body })
 			set_process(false)
 			return
