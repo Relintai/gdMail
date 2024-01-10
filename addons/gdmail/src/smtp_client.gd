@@ -76,7 +76,7 @@ var _tcp_client : StreamPeerTCP = StreamPeerTCP.new()
 
 #SessionStatus
 var _current_session_status : int = SessionStatus.NONE
-var _current_session_email : Email = null
+var _current_session_email : EMail = null
 var _current_to_index : int = 0
 var _current_cc_index : int = 0
 
@@ -91,7 +91,7 @@ var _mail_queue_mutex : Mutex = Mutex.new()
 
 var _mail_queue : Array
 
-func send_email(p_email: Email) -> void:
+func send_email(p_email: EMail) -> void:
 	if !is_inside_tree():
 		PLogger.log_error("send_email !is_inside_tree()")
 		return
@@ -105,7 +105,7 @@ func send_email(p_email: Email) -> void:
 	else:
 		_send_email(p_email)
 	
-func _send_email(p_email: Email) -> void:
+func _send_email(p_email: EMail) -> void:
 	_current_session_email = p_email
 	
 	if !_current_session_email:
@@ -372,7 +372,7 @@ func _process_email() -> void:
 
 func _worker_thread_func(user_data):
 	while _worker_thread_running:
-		var _mail : Email = null
+		var _mail : EMail = null
 		
 		_mail_queue_mutex.lock()
 		_mail = _mail_queue.pop_front()

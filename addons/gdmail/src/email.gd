@@ -1,5 +1,5 @@
 extends Reference
-class_name Email
+class_name EMail
 
 class Address:
 	var address: String

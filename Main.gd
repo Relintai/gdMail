@@ -1,7 +1,7 @@
 extends Node
 
-func get_test_email() -> Email:
-	var mail : Email = Email.new()
+func get_test_email() -> EMail:
+	var mail : EMail = EMail.new()
 	
 	mail.add_recipient("recipient_email_address@email_address.email")
 	#mail.add_cc("cc_email_address@email_address.email")
@@ -14,11 +14,11 @@ func get_test_email() -> Email:
 	return mail
 
 #func _ready() -> void:
-#	var mail : Email = get_test_email()
+#	var mail : EMail = get_test_email()
 #
 #	$SMTPClientNode.send_email(mail)
 
 func _on_Button_pressed() -> void:
-	var mail : Email = get_test_email()
+	var mail : EMail = get_test_email()
 
 	$SMTPClientNode.send_email(mail)
